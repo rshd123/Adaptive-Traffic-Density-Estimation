@@ -1,0 +1,10 @@
+pillow>=10.0
+pyyaml>=6.0
+numpy>=2.0
+tqdm>=4.60
+
+# Phase 2+ (training / inference) — install when we reach training:
+# ultralytics>=8.3.0
+# torch>=2.7.0
+# opencv-python>=4.9.0
+# matplotlib>=3.8.0
