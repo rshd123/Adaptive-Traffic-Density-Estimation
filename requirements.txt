@@ -3,8 +3,14 @@ pyyaml>=6.0
 numpy>=2.0
 tqdm>=4.60
 
-# Phase 2+ (training / inference) — install when we reach training:
-# ultralytics>=8.3.0
-# torch>=2.7.0
-# opencv-python>=4.9.0
-# matplotlib>=3.8.0
+# Phase 2 - training / inference (installed inside the ATDE conda env, no venv)
+ultralytics>=8.3.0
+opencv-python>=4.9.0
+matplotlib>=3.8.0
+
+# torch/torchvision are installed FIRST and separately - RTX 5060 (Blackwell)
+# needs the CUDA 13.0 wheels, otherwise training would silently fall back to CPU:
+#   conda activate ATDE
+#   python -m pip install torch torchvision --index-url https://download.pytorch.org/whl/cu130
+# then:
+#   python -m pip install -r requirements.txt

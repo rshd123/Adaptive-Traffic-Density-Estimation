@@ -1,0 +1,24 @@
+# PCU (Passenger Car Unit) weights per DriveIndia class ID.
+# IRC-based values. Lookups are keyed by integer class id only -
+# class names never take part in any calculation.
+#
+# Verified PCU ids (spot-checked via data/verify/pcul_*.jpg):
+#   2 = car, 3 = motorcycle, 10 = auto-rickshaw, 5 = bus, 7 = truck
+
+by_id:
+  2: 1.0    # car
+  3: 0.5    # motorcycle
+  10: 0.75  # auto-rickshaw
+  5: 3.0    # bus
+  7: 3.5    # truck
+
+# Detections whose id is not in by_id are ignored at density time.
+ignore_other_ids: true
+
+# Display labels for the 5 PCU classes (reporting / plot legends only).
+labels:
+  2: car
+  3: motorcycle
+  10: auto-rickshaw
+  5: bus
+  7: truck

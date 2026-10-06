@@ -1,0 +1,34 @@
+path: C:/Users/arsha/Desktop/Adaptive Traffic Density Estimation/data/subset
+train: train/images
+val: val/images
+test: test/images
+nc: 28
+names:
+  0: id0
+  1: id1
+  2: car
+  3: motorcycle
+  4: id4
+  5: bus
+  6: id6
+  7: truck
+  8: id8
+  9: id9
+  10: auto-rickshaw
+  11: id11
+  12: id12
+  13: id13
+  14: id14
+  15: id15
+  16: id16
+  17: id17
+  18: id18
+  19: id19
+  20: id20
+  21: id21
+  22: id22
+  23: id23
+  24: id24
+  25: id25
+  26: id26
+  27: id27

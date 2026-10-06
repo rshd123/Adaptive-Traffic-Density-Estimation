@@ -28,13 +28,16 @@ Skip: `truncated_datasets/` (kept for future use), `archive.zip` and `IDD_FGVD.t
 
 Native resolution 1920×1080 — keep as-is, YOLO resizes internally. Images with no label file are excluded from training.
 
-### 1.2 Class ID Verification (blocking, before any training)
+### 1.2 Class IDs — names are cosmetic (NOT blocking)
 
-DriveIndia ships **no `data.yaml`** — the ID→name mapping must be verified, not assumed.
+DriveIndia ships **no `data.yaml`**, but training, PCU weighting and density all key on the **integer class ID**, so name verification no longer blocks training:
 
-- Paper (arXiv 2507.19912, Table II) gives the 24 class names; frequency match on val gives the hypothesized mapping (see Class Mapping below).
-- **Verify visually:** render labels on ~30 sampled images using the hypothesized names, confirm each ID looks right.
-- **Known anomaly to resolve:** val labels contain IDs 24–27 (77/8/7/3 instances) while IDs 11, 13, 16, 17, 19 never appear — mapping may be off at the tail.
+- Labels are `class_id cx cy w h` — YOLO trains on the numbers; the `names:` list only labels charts/reports.
+- PCU lookup is ID-based (`configs/pcu_weights.yaml`: 2/3/10/5/7).
+- `configs/data.yaml` is generated with `preprocessor.py config` (default `--names pcu`: plain `id<N>` for every class, real names only for the 5 PCU classes). `--names ids` = all plain IDs, `--names paper` = hypothesized names (reference only).
+- **PCU IDs spot-checked** via rendered atlases (`data/verify/pcul_*.jpg`, `atlas_*.jpg`): ID2=car, ID3=motorcycle, ID10=auto-rickshaw, ID5=bus, ID7=truck ✓ (a few noisy boxes, classes correct).
+- **Tail IDs 14–27**: hypothesized names known-wrong and irrelevant — density ignores every class except the 5 PCU IDs. Anomaly IDs 24–27 kept as-is (no remapping). Final names for all 28 classes to be supplied later — switching names never requires retraining.
+- Missing IDs 11, 13, 17 simply stay empty slots (nc = 28 = max id + 1).
 
 ### 1.3 Stratified Subset Reduction (`src/data/preprocessor.py`)
 
@@ -56,15 +59,27 @@ Expected accuracy: with 2.5–3K train imgs, mAP for the 5 PCU classes should be
 
 ### 1.4 Config Generation
 
-Generate `configs/data.yaml` from the subset:
+Generate `configs/data.yaml` from the subset (`preprocessor.py config`, default `--names pcu`):
 
 ```yaml
 path: <abs path to data/subset>
 train: train/images
 val: val/images
 test: test/images
-nc: 24
-names: [ ...verified names... ]
+nc: 28
+names:
+  0: id0
+  1: id1
+  2: car          # the 5 PCU classes get real names
+  3: motorcycle
+  4: id4
+  5: bus
+  6: id6
+  7: truck
+  8: id8
+  9: id9
+  10: auto-rickshaw
+  11: id11        # ...everything else stays id<N> until final names arrive
 ```
 
 ---
@@ -73,8 +88,15 @@ names: [ ...verified names... ]
 
 ### 2.1 Detector (`src/models/detector.py`, entry: `src/main.py`)
 
+- **Environment: conda env `ATDE`** (Miniconda) — no `.venv` anywhere. Setup once:
+  ```powershell
+  conda activate ATDE
+  python -m pip install torch torchvision --index-url https://download.pytorch.org/whl/cu130   # RTX 5060 = Blackwell, needs CUDA 13.0 wheels
+  python -m pip install -r requirements.txt
+  ```
 - Model: `yolo26n` (nano), transfer learning from pretrained `weights/yolo26n.pt`
 - Data: `configs/data.yaml` → `data/subset/`
+- Run: `python src/main.py train` (options: `--epochs --imgsz --batch --device --patience`)
 - Hyperparameters (demo baseline):
 
 | Param | Value |

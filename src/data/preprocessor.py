@@ -10,7 +10,9 @@ Usage (ATDE env):
     python src/data/preprocessor.py stats
     python src/data/preprocessor.py verify --n 40
     python src/data/preprocessor.py build --train 3000 --val 400 --test 700
-    python src/data/preprocessor.py config
+    python src/data/preprocessor.py config            # default: id<N> + names for the 5 PCU classes
+    python src/data/preprocessor.py config --names ids      # every class as id<N>
+    python src/data/preprocessor.py config --names paper    # hypothesized names (reference only)
 """
 
 from __future__ import annotations
@@ -71,6 +73,22 @@ NAMES = {
 
 # IRC-based PCU weights for the 5 target classes (IDs per mapping above).
 PCU = {2: 1.0, 3: 0.5, 10: 0.75, 5: 3.0, 7: 3.5}
+
+
+def load_pcu_labels() -> dict[int, str]:
+    """Display names for the 5 PCU classes - from configs/pcu_weights.yaml.
+
+    Everything else stays id<N> in data.yaml. Falls back to the same values
+    if the yaml is missing. Training/PCU/density never use these strings.
+    """
+    fallback = {2: "car", 3: "motorcycle", 10: "auto-rickshaw", 5: "bus", 7: "truck"}
+    path = ROOT / "configs" / "pcu_weights.yaml"
+    try:
+        import yaml
+        cfg = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+        return {int(k): str(v) for k, v in (cfg.get("labels") or {}).items()} or fallback
+    except Exception:
+        return fallback
 
 PALETTE = [
     "#e6194b", "#3cb44b", "#ffe119", "#4363d8", "#f58231",
@@ -260,18 +278,23 @@ def cmd_build(args) -> None:
         # rarest-class-first: key = frequency of the rarest class in the image
         ordered = sorted(pool, key=lambda s: (min(freq[c] for c in set(s["classes"])), s["seq"], s["frame"]))
 
-        accepted, last_frame = [], {}
+        accepted, accepted_paths = [], set()
+        frames_by_seq = defaultdict(list)  # seq -> frames already accepted in it
         for gap in [args.gap, max(1, args.gap // 2), 1, 0]:
             for s in ordered:
                 if len(accepted) >= quota:
                     break
-                if s in accepted:
+                if s["img"] in accepted_paths:
                     continue
-                prev = last_frame.get(s["seq"])
-                if prev is not None and s["frame"] - prev < gap:
+                # distance to the NEAREST accepted frame of this sequence
+                # (iteration is rare-class-first, not frame order, so a
+                # single "last frame" check would reject everything earlier)
+                fs = frames_by_seq[s["seq"]]
+                if fs and min(abs(s["frame"] - f) for f in fs) < gap:
                     continue
                 accepted.append(s)
-                last_frame[s["seq"]] = s["frame"]
+                accepted_paths.add(s["img"])
+                fs.append(s["frame"])
             if len(accepted) >= quota:
                 break
         accepted = accepted[:quota]
@@ -302,18 +325,37 @@ def cmd_build(args) -> None:
     print(f"\nsubset -> {SUBSET}\nreport -> {SUBSET / 'build_report.json'}")
 
 
-def cmd_config(_args) -> None:
+def cmd_config(args) -> None:
     missing = [s for s in ("train", "val", "test") if not (SUBSET / s / "images").is_dir()]
     if missing:
         raise SystemExit(f"build the subset first (missing: {', '.join(missing)})")
 
     max_id = -1
-    for split in SPLITS:
-        for s in scan(split):
-            if s["classes"]:
-                max_id = max(max_id, max(s["classes"]))
+    for split in ("train", "val", "test"):
+        lbl_dir = SUBSET / split / "labels"
+        if not lbl_dir.is_dir():
+            continue
+        for lbl in lbl_dir.glob("*.txt"):
+            for line in lbl.read_text(encoding="utf-8", errors="replace").splitlines():
+                p = line.split()
+                if not p:
+                    continue
+                try:
+                    max_id = max(max_id, int(float(p[0])))
+                except ValueError:
+                    pass
+    if max_id < 0:
+        raise SystemExit("no labels found in data/subset - run 'build' first")
     nc = max_id + 1
-    names = [name(i) for i in range(nc)]
+
+    # names are cosmetic (training, PCU and density all key on the integer id)
+    if args.names == "paper":
+        names = [name(i) for i in range(nc)]
+    elif args.names == "pcu":
+        pcu_labels = load_pcu_labels()
+        names = [pcu_labels.get(i, f"id{i}") for i in range(nc)]
+    else:
+        names = [f"id{i}" for i in range(nc)]
 
     lines = [
         f"path: {SUBSET.as_posix()}",
@@ -326,9 +368,9 @@ def cmd_config(_args) -> None:
     for i, nm in enumerate(names):
         lines.append(f"  {i}: {nm}")
     CONFIG_YAML.write_text("\n".join(lines) + "\n", encoding="utf-8")
-    print(f"nc={nc} -> {CONFIG_YAML}")
-    if nc > 24:
-        print("WARNING: ids >= 24 present (anomaly) - resolve via 'verify' before training")
+    print(f"nc={nc} names={args.names} -> {CONFIG_YAML}")
+    if max_id >= 24:
+        print("note: ids >= 24 present (anomaly) - kept as-is, names are cosmetic")
 
 
 def main() -> None:
@@ -348,7 +390,10 @@ def main() -> None:
     b.add_argument("--gap", type=int, default=10,
                    help="min frame gap within a sequence to avoid near-duplicates (default 10)")
 
-    sub.add_parser("config", help="generate configs/data.yaml from subset")
+    c = sub.add_parser("config", help="generate configs/data.yaml from subset")
+    c.add_argument("--names", choices=["pcu", "ids", "paper"], default="pcu",
+                   help="'pcu' (default) = id0..idN with names for the 5 PCU classes | "
+                        "'ids' = every class id<N> | 'paper' = hypothesized DriveIndia names")
 
     args = ap.parse_args()
     {"stats": cmd_stats, "verify": cmd_verify, "build": cmd_build, "config": cmd_config}[args.cmd](args)
